@@ -2,6 +2,15 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_TABLES } from '../data/initialTables';
 import { MENU_ITEMS } from '../data/menuData';
 import { useNotification } from './NotificationContext';
+import {
+  subscribeOrders,
+  subscribeTables,
+  subscribeMenuItems,
+  syncOrderToFirebase,
+  syncTableToFirebase,
+  syncMenuItemToFirebase,
+  deleteMenuItemFromFirebase
+} from '../firebase/services';
 
 const OrderContext = createContext();
 
@@ -71,6 +80,25 @@ export const OrderProvider = ({ children }) => {
     const saved = localStorage.getItem('hotel_menu_items');
     return saved ? JSON.parse(saved) : MENU_ITEMS;
   });
+
+  // Real-time Firebase subscriptions
+  useEffect(() => {
+    const unsubOrders = subscribeOrders((fbOrders) => {
+      if (fbOrders && fbOrders.length) setOrders(fbOrders);
+    });
+    const unsubTables = subscribeTables((fbTables) => {
+      if (fbTables && fbTables.length) setTables(fbTables);
+    });
+    const unsubMenu = subscribeMenuItems((fbMenu) => {
+      if (fbMenu && fbMenu.length) setMenuItems(fbMenu);
+    });
+
+    return () => {
+      unsubOrders();
+      unsubTables();
+      unsubMenu();
+    };
+  }, []);
 
   // Sync state to localStorage whenever orders, tables, or menuItems change
   useEffect(() => {
@@ -197,6 +225,10 @@ export const OrderProvider = ({ children }) => {
       localStorage.setItem('hotel_orders', JSON.stringify(updatedOrders));
       localStorage.setItem('hotel_tables', JSON.stringify(updatedTables));
 
+      // Sync to Firebase Firestore
+      syncOrderToFirebase(updatedOrder);
+      syncTableToFirebase(tNum, 'Occupied', existingActiveOrder.orderId);
+
       const notificationPayload = {
         title: "🔔 Items Added to Table Order!",
         message: `Table ${tNum} added new items to Order #${existingActiveOrder.orderId}`,
@@ -251,6 +283,10 @@ export const OrderProvider = ({ children }) => {
     localStorage.setItem('hotel_orders', JSON.stringify(updatedOrders));
     localStorage.setItem('hotel_tables', JSON.stringify(updatedTables));
 
+    // Sync to Firebase Firestore
+    syncOrderToFirebase(newOrder);
+    syncTableToFirebase(tNum, 'Occupied', orderId);
+
     const notificationPayload = {
       title: "🔔 New Order Received!",
       message: `Table ${tableNumber} placed Order #${orderId} (${items.length} items)`,
@@ -276,13 +312,15 @@ export const OrderProvider = ({ children }) => {
       tableStatus = 'Payment Pending';
     }
 
+    const updatedOrderPayload = {
+      ...targetOrder,
+      status: newStatus,
+      updatedAt: new Date().toISOString()
+    };
+
     const updatedOrders = orders.map((o) => {
       if (o.orderId === orderId) {
-        return {
-          ...o,
-          status: newStatus,
-          updatedAt: new Date().toISOString()
-        };
+        return updatedOrderPayload;
       }
       return o;
     });
@@ -299,6 +337,10 @@ export const OrderProvider = ({ children }) => {
 
     localStorage.setItem('hotel_orders', JSON.stringify(updatedOrders));
     localStorage.setItem('hotel_tables', JSON.stringify(updatedTables));
+
+    // Sync to Firebase Firestore
+    syncOrderToFirebase(updatedOrderPayload);
+    syncTableToFirebase(targetOrder.tableNumber, tableStatus, orderId);
 
     let notificationPayload = null;
     if (newStatus === 'done') {
@@ -327,7 +369,7 @@ export const OrderProvider = ({ children }) => {
       if (o.tableNumber === tNum && o.status !== 'paid') {
         const itemDiscount = o.orderId === orderId ? finalDiscount : 0;
         const finalTotal = Math.max(0, o.subtotal + o.tax - itemDiscount);
-        return {
+        const paidOrder = {
           ...o,
           discount: itemDiscount,
           total: finalTotal,
@@ -336,6 +378,8 @@ export const OrderProvider = ({ children }) => {
           paymentMethod: paymentMethod,
           updatedAt: new Date().toISOString()
         };
+        syncOrderToFirebase(paidOrder);
+        return paidOrder;
       }
       return o;
     });
@@ -353,6 +397,9 @@ export const OrderProvider = ({ children }) => {
 
     localStorage.setItem('hotel_orders', JSON.stringify(updatedOrders));
     localStorage.setItem('hotel_tables', JSON.stringify(updatedTables));
+
+    // Sync to Firebase Firestore
+    syncTableToFirebase(tNum, 'Available', null);
 
     const notificationPayload = {
       title: "✓ Payment Successful",
@@ -381,6 +428,9 @@ export const OrderProvider = ({ children }) => {
     setMenuItems(updatedMenu);
     localStorage.setItem('hotel_menu_items', JSON.stringify(updatedMenu));
 
+    // Sync to Firebase Firestore
+    syncMenuItemToFirebase(createdItem);
+
     const notificationPayload = {
       title: "✨ New Dish Added to Menu",
       message: `${createdItem.name} (₹${createdItem.price}) has been added to ${createdItem.category}.`,
@@ -395,11 +445,20 @@ export const OrderProvider = ({ children }) => {
 
   // Update existing food item in menu catalog
   const updateMenuItem = (itemId, updatedData) => {
-    const updatedMenu = menuItems.map((item) =>
-      item.id === itemId ? { ...item, ...updatedData } : item
-    );
+    let updatedItemObj = null;
+    const updatedMenu = menuItems.map((item) => {
+      if (item.id === itemId) {
+        updatedItemObj = { ...item, ...updatedData };
+        return updatedItemObj;
+      }
+      return item;
+    });
     setMenuItems(updatedMenu);
     localStorage.setItem('hotel_menu_items', JSON.stringify(updatedMenu));
+
+    if (updatedItemObj) {
+      syncMenuItemToFirebase(updatedItemObj);
+    }
 
     const notificationPayload = {
       title: "✏️ Dish Updated",
@@ -418,6 +477,8 @@ export const OrderProvider = ({ children }) => {
     const updatedMenu = menuItems.filter((i) => i.id !== itemId);
     setMenuItems(updatedMenu);
     localStorage.setItem('hotel_menu_items', JSON.stringify(updatedMenu));
+
+    deleteMenuItemFromFirebase(itemId);
 
     const notificationPayload = {
       title: "🗑️ Dish Removed",
