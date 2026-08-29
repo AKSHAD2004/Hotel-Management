@@ -104,6 +104,10 @@ export const en = {
   tableStatusFoodReady: "Food Ready",
   tableStatusPaymentPending: "Payment Pending",
   tableStatusCompleted: "Completed",
+  tableStatusFree: "Free",
+  tableStatusKitchen: "Kitchen",
+  tableStatusBillDue: "Bill Due",
+  resetTables: "Reset All Tables",
   capacity: "Capacity",
 
   // Order Statuses

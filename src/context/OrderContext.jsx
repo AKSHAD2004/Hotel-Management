@@ -56,20 +56,15 @@ export const OrderProvider = ({ children }) => {
 
   const [orders, setOrders] = useState(() => {
     const saved = localStorage.getItem('hotel_orders');
-    return saved ? JSON.parse(saved) : INITIAL_DEMO_ORDERS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [tables, setTables] = useState(() => {
     const saved = localStorage.getItem('hotel_tables');
     if (saved) return JSON.parse(saved);
 
-    // Sync initial demo orders with table status
-    const defaultTables = [...INITIAL_TABLES];
-    defaultTables[3].status = 'Payment Pending'; // Table 4
-    defaultTables[3].currentOrderId = 'ORD-1001';
-    defaultTables[7].status = 'Order Preparing'; // Table 8
-    defaultTables[7].currentOrderId = 'ORD-1002';
-    return defaultTables;
+    // All tables default to 'Available' (empty)
+    return [...INITIAL_TABLES];
   });
 
   const [menuItems, setMenuItems] = useState(() => {
@@ -435,6 +430,15 @@ export const OrderProvider = ({ children }) => {
     broadcastSync(notificationPayload);
   };
 
+  // Reset all tables and orders to default clean state
+  const resetAllTables = () => {
+    setOrders([]);
+    setTables(INITIAL_TABLES);
+    localStorage.removeItem('hotel_orders');
+    localStorage.setItem('hotel_tables', JSON.stringify(INITIAL_TABLES));
+    broadcastSync();
+  };
+
   return (
     <OrderContext.Provider
       value={{
@@ -446,7 +450,8 @@ export const OrderProvider = ({ children }) => {
         processPayment,
         addNewMenuItem,
         updateMenuItem,
-        deleteMenuItem
+        deleteMenuItem,
+        resetAllTables
       }}
     >
       {children}

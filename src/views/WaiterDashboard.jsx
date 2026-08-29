@@ -19,11 +19,12 @@ import {
   X,
   Sparkles,
   Edit3,
-  ArrowRight
+  ArrowRight,
+  RotateCcw
 } from 'lucide-react';
 
 export const WaiterDashboard = () => {
-  const { tables, orders, menuItems, createOrder, addNewMenuItem, updateMenuItem, deleteMenuItem } = useOrders();
+  const { tables, orders, menuItems, createOrder, addNewMenuItem, updateMenuItem, deleteMenuItem, resetAllTables } = useOrders();
   const { user } = useAuth();
   const { language, t } = useLanguage();
 
@@ -34,6 +35,22 @@ export const WaiterDashboard = () => {
   const [specialNotes, setSpecialNotes] = useState('');
   const [activeTab, setActiveTab] = useState('create'); // 'create' | 'active_orders'
   const [orderSuccessMsg, setOrderSuccessMsg] = useState(null);
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+
+  const getTableStatusLabel = (status) => {
+    switch (status) {
+      case 'Available':
+        return t('tableStatusFree') || 'Free';
+      case 'Occupied':
+        return t('tableStatusOccupied') || 'Occupied';
+      case 'Order Preparing':
+        return t('tableStatusKitchen') || 'Kitchen';
+      case 'Payment Pending':
+        return t('tableStatusBillDue') || 'Bill Due';
+      default:
+        return status;
+    }
+  };
 
   // Modal State for Adding / Editing Item
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -193,6 +210,7 @@ export const WaiterDashboard = () => {
     setOrderSuccessMsg(`Order #${orderId} for Table ${selectedTable} placed successfully!`);
     setCartItems([]);
     setSpecialNotes('');
+    setIsMobileCartOpen(false);
 
     setTimeout(() => {
       setOrderSuccessMsg(null);
@@ -251,42 +269,64 @@ export const WaiterDashboard = () => {
           <div className="lg:col-span-2 space-y-6">
             
             {/* Table Selection Bar */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
                   <Utensils className="w-4 h-4 text-sky-600" />
-                  <span>{t('selectTable')}</span>
-                </h3>
-                <span className="text-xs font-semibold text-slate-500">
-                  {t('tableSelected')}: <span className="text-sky-700 font-bold text-sm">Table {selectedTable}</span>
-                </span>
+                  <h3 className="text-sm font-bold text-slate-800">{t('selectTable')}</h3>
+                  <span className="text-xs font-semibold text-slate-500 ml-2">
+                    {t('tableSelected')}: <span className="text-sky-700 font-bold text-sm">Table {selectedTable}</span>
+                  </span>
+                </div>
+
+                {/* Reset Tables Option */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Reset all tables to Free status?')) {
+                      resetAllTables();
+                    }
+                  }}
+                  className="self-start sm:self-auto text-[11px] font-bold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition-colors"
+                  title={t('resetTables')}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{t('resetTables')}</span>
+                </button>
               </div>
 
               {/* Table Grid (1 - 20) */}
-              <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+              <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-10 gap-1.5 sm:gap-2">
                 {tables.map((tItem) => {
                   const isSelected = selectedTable === tItem.tableNumber;
-                  const isOccupied = tItem.status !== 'Available';
-
                   let statusBg = "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100";
+                  let dotBg = "bg-emerald-500";
+
                   if (isSelected) {
-                    statusBg = "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-600/30 font-bold scale-105";
+                    statusBg = "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-600/30 font-bold scale-[1.03]";
+                    dotBg = "bg-white";
                   } else if (tItem.status === 'Occupied') {
-                    statusBg = "bg-amber-50 border-amber-300 text-amber-800";
+                    statusBg = "bg-amber-50 border-amber-300 text-amber-900";
+                    dotBg = "bg-amber-500";
                   } else if (tItem.status === 'Order Preparing') {
-                    statusBg = "bg-orange-50 border-orange-300 text-orange-800";
+                    statusBg = "bg-orange-50 border-orange-300 text-orange-900";
+                    dotBg = "bg-orange-500";
                   } else if (tItem.status === 'Payment Pending') {
-                    statusBg = "bg-purple-50 border-purple-300 text-purple-800";
+                    statusBg = "bg-purple-50 border-purple-300 text-purple-900";
+                    dotBg = "bg-purple-500";
                   }
 
                   return (
                     <button
                       key={tItem.id}
                       onClick={() => setSelectedTable(tItem.tableNumber)}
-                      className={`p-2 rounded-xl border text-center transition-all ${statusBg}`}
+                      className={`py-2 px-1 rounded-xl border text-center transition-all flex flex-col items-center justify-center ${statusBg}`}
                     >
-                      <div className="text-xs font-extrabold">T-{tItem.tableNumber}</div>
-                      <div className="text-[9px] opacity-75 truncate">{tItem.status}</div>
+                      <div className="text-xs sm:text-sm font-extrabold leading-tight">T-{tItem.tableNumber}</div>
+                      <div className="flex items-center gap-1 text-[10px] font-bold opacity-90 mt-0.5 max-w-full">
+                        <span className={`w-1.5 h-1.5 rounded-full ${dotBg} shrink-0`} />
+                        <span className="truncate">{getTableStatusLabel(tItem.status)}</span>
+                      </div>
                     </button>
                   );
                 })}
@@ -822,15 +862,130 @@ export const WaiterDashboard = () => {
             <div className="text-sm font-extrabold text-white">₹{grandTotal.toFixed(2)}</div>
           </div>
           <button
-            onClick={() => {
-              const cartEl = document.getElementById('order-cart-drawer');
-              if (cartEl) cartEl.scrollIntoView({ behavior: 'smooth' });
-            }}
+            onClick={() => setIsMobileCartOpen(true)}
             className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-600/30 flex items-center gap-1.5 active:scale-95 transition-all"
           >
             <span>{t('orderCart')}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Mobile Cart View Slide-up Modal */}
+      {isMobileCartOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full p-5 shadow-2xl border border-slate-100 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Utensils className="w-5 h-5 text-sky-600" />
+                <h3 className="font-extrabold text-slate-900 text-base">{t('orderCart')}</h3>
+                <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-lg">
+                  Table #{selectedTable}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsMobileCartOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Cart Items */}
+            {cartItems.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 space-y-2">
+                <Utensils className="w-8 h-8 mx-auto stroke-1" />
+                <p className="text-xs">{t('emptyCart')}</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                {cartItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs"
+                  >
+                    <div className="flex-1 min-w-0 pr-2">
+                      <div className="font-bold text-slate-800 truncate">{item.name}</div>
+                      <div className="text-[10px] text-slate-400">₹{item.price} each</div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+                        <button
+                          onClick={() => handleUpdateQuantity(item.id, -1)}
+                          className="p-1 hover:bg-slate-100 text-slate-600"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="px-2 font-bold text-slate-800">{item.quantity}</span>
+                        <button
+                          onClick={() => handleUpdateQuantity(item.id, 1)}
+                          className="p-1 hover:bg-slate-100 text-slate-600"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="font-bold text-slate-800 w-12 text-right">
+                        ₹{item.price * item.quantity}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveFromCart(item.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Special Instructions Note */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+                <span>{t('specialInstructions')}</span>
+              </label>
+              <textarea
+                rows={2}
+                value={specialNotes}
+                onChange={(e) => setSpecialNotes(e.target.value)}
+                placeholder={t('instructionsPlaceholder')}
+                className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+
+            {/* Total & Submit Button */}
+            <div className="pt-3 border-t border-slate-200 space-y-3">
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>{t('subtotal')}</span>
+                  <span className="font-semibold">₹{subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>{t('tax')}</span>
+                  <span className="font-semibold">₹{tax.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
+                  <span>{t('grandTotal')}</span>
+                  <span className="text-sky-700">₹{grandTotal.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handlePlaceOrder}
+                disabled={cartItems.length === 0}
+                className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+                  cartItems.length > 0
+                    ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-600/25 active:scale-[0.99]'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>{t('placeOrder')}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

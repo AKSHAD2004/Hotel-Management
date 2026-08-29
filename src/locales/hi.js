@@ -104,6 +104,10 @@ export const hi = {
   tableStatusFoodReady: "भोजन तैयार है",
   tableStatusPaymentPending: "भुगतान बाकी",
   tableStatusCompleted: "पूर्ण",
+  tableStatusFree: "खाली",
+  tableStatusKitchen: "किचन",
+  tableStatusBillDue: "बिल बाकी",
+  resetTables: "सभी टेबल रीसेट करें",
   capacity: "क्षमता",
 
   // Order Statuses
