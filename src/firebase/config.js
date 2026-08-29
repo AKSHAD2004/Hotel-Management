@@ -1,21 +1,21 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: "AIzaSyBGNkpc1z-2kykrHvmeR09Pglmn1-zq2p4",
+  authDomain: "hotel-management-455f4.firebaseapp.com",
+  databaseURL: "https://hotel-management-455f4-default-rtdb.firebaseio.com",
+  projectId: "hotel-management-455f4",
+  storageBucket: "hotel-management-455f4.firebasestorage.app",
+  messagingSenderId: "323382625906",
+  appId: "1:323382625906:web:79537aa3e780b6de7024eb",
+  measurementId: "G-T74ZBGPQWF"
 };
 
-// Helper check to verify if Firebase config parameters are provided
 export const isFirebaseConfigured = () => {
   return Boolean(
     firebaseConfig.apiKey &&
-    firebaseConfig.projectId &&
     firebaseConfig.apiKey !== 'your_api_key_here'
   );
 };
@@ -27,14 +27,14 @@ let auth = null;
 if (isFirebaseConfigured()) {
   try {
     app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
+    db = getDatabase(app);
     auth = getAuth(app);
-    console.log('🔥 Firebase successfully initialized with Firestore!');
+    console.log('🔥 Firebase Realtime Database initialized successfully!');
   } catch (error) {
     console.warn('⚠️ Firebase initialization error:', error.message);
   }
 } else {
-  console.log('ℹ️ Firebase environment keys not yet configured in .env. Running in Local Mode with localStorage fallback.');
+  console.log('ℹ️ Firebase keys not set in .env. Running in local mode.');
 }
 
 export { app, db, auth };

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const WaiterDashboard = () => {
-  const { tables, orders, menuItems, createOrder, addNewMenuItem, updateMenuItem, deleteMenuItem, resetAllTables } = useOrders();
+  const { tables, orders, menuItems, createOrder, addNewMenuItem, updateMenuItem, deleteMenuItem, updateExistingOrder, resetAllTables } = useOrders();
   const { user } = useAuth();
   const { language, t } = useLanguage();
 
@@ -36,6 +36,11 @@ export const WaiterDashboard = () => {
   const [activeTab, setActiveTab] = useState('create'); // 'create' | 'active_orders'
   const [orderSuccessMsg, setOrderSuccessMsg] = useState(null);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+
+  // Active Order Edit Modal State
+  const [editingActiveOrder, setEditingActiveOrder] = useState(null);
+  const [editOrderItems, setEditOrderItems] = useState([]);
+  const [editOrderNotes, setEditOrderNotes] = useState('');
 
   const getTableStatusLabel = (status) => {
     switch (status) {
@@ -50,6 +55,62 @@ export const WaiterDashboard = () => {
       default:
         return status;
     }
+  };
+
+  // Active Order Editing Helpers
+  const handleOpenEditActiveOrder = (ord) => {
+    if (ord.status !== 'new') return;
+    setEditingActiveOrder(ord);
+    setEditOrderItems(ord.items.map((i) => ({ ...i })));
+    setEditOrderNotes(ord.notes || '');
+  };
+
+  const handleUpdateEditItemQty = (itemId, delta) => {
+    setEditOrderItems((prev) =>
+      prev
+        .map((it) => {
+          if (it.id === itemId) {
+            const newQty = it.quantity + delta;
+            return newQty > 0 ? { ...it, quantity: newQty } : null;
+          }
+          return it;
+        })
+        .filter(Boolean)
+    );
+  };
+
+  const handleRemoveEditItem = (itemId) => {
+    setEditOrderItems((prev) => prev.filter((it) => it.id !== itemId));
+  };
+
+  const handleAddItemToEditOrder = (item) => {
+    setEditOrderItems((prev) => {
+      const existing = prev.find((i) => i.id === item.id);
+      if (existing) {
+        return prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+      }
+      return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
+    });
+  };
+
+  const handleSaveEditActiveOrder = (e) => {
+    e.preventDefault();
+    if (!editingActiveOrder || editOrderItems.length === 0) return;
+
+    updateExistingOrder({
+      orderId: editingActiveOrder.orderId,
+      items: editOrderItems,
+      notes: editOrderNotes
+    });
+
+    setOrderSuccessMsg(`Order #${editingActiveOrder.orderId} (Table ${editingActiveOrder.tableNumber}) updated successfully!`);
+    setEditingActiveOrder(null);
+    setEditOrderItems([]);
+    setEditOrderNotes('');
+
+    setTimeout(() => {
+      setOrderSuccessMsg(null);
+    }, 4000);
   };
 
   // Modal State for Adding / Editing Item
@@ -140,11 +201,9 @@ export const WaiterDashboard = () => {
   };
 
   const handleDeleteDish = (itemId) => {
-    if (window.confirm('Are you sure you want to delete this dish from the menu?')) {
-      deleteMenuItem(itemId);
-      setIsAddModalOpen(false);
-      setEditingItem(null);
-    }
+    deleteMenuItem(itemId);
+    setIsAddModalOpen(false);
+    setEditingItem(null);
   };
 
   // Filter dynamic menu items by category and search
@@ -190,12 +249,7 @@ export const WaiterDashboard = () => {
 
   // Submit order
   const handlePlaceOrder = () => {
-    if (!selectedTable) {
-      alert('Please select a table number.');
-      return;
-    }
-    if (cartItems.length === 0) {
-      alert('Please select at least one food item.');
+    if (!selectedTable || cartItems.length === 0) {
       return;
     }
 
@@ -255,14 +309,6 @@ export const WaiterDashboard = () => {
         </div>
       </div>
 
-      {/* Success Notification Banner */}
-      {orderSuccessMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-4 rounded-xl flex items-center gap-3 animate-in fade-in">
-          <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span className="text-xs font-semibold">{orderSuccessMsg}</span>
-        </div>
-      )}
-
       {activeTab === 'create' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left 2 Columns: Table Selection & Menu Catalog */}
@@ -282,11 +328,7 @@ export const WaiterDashboard = () => {
                 {/* Reset Tables Option */}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset all tables to Free status?')) {
-                      resetAllTables();
-                    }
-                  }}
+                  onClick={() => resetAllTables()}
                   className="self-start sm:self-auto text-[11px] font-bold text-slate-500 hover:text-rose-600 flex items-center gap-1 transition-colors"
                   title={t('resetTables')}
                 >
@@ -618,9 +660,30 @@ export const WaiterDashboard = () => {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-200 flex justify-between text-xs font-bold text-slate-800">
-                    <span>Total Amount</span>
-                    <span className="text-sky-700">₹{ord.total.toFixed(2)}</span>
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium block">Total Amount</span>
+                      <span className="text-sm font-extrabold text-sky-700">₹{ord.total.toFixed(2)}</span>
+                    </div>
+
+                    {ord.status === 'new' ? (
+                      <button
+                        onClick={() => handleOpenEditActiveOrder(ord)}
+                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit Order</span>
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        title="Order is currently being prepared in kitchen and cannot be modified."
+                        className="px-3 py-1.5 bg-slate-200 text-slate-400 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-not-allowed opacity-80"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Cooking (Locked)</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -985,6 +1048,163 @@ export const WaiterDashboard = () => {
                 <span>{t('placeOrder')}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for Editing Active Order (Modify Items / Quantities / Notes) */}
+      {editingActiveOrder && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 relative max-h-[90vh] overflow-y-auto">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="bg-sky-100 text-sky-700 p-2 rounded-xl">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base leading-tight">
+                    Edit Order #{editingActiveOrder.orderId}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Table #{editingActiveOrder.tableNumber} • Modify items or add new dishes
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingActiveOrder(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditActiveOrder} className="space-y-4">
+              {/* Items List in Order */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Order Items Breakdown
+                </label>
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {editOrderItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                    >
+                      <div className="flex-1 min-w-0 pr-2">
+                        <div className="font-bold text-slate-800 truncate">{item.name}</div>
+                        <div className="text-[10px] text-slate-400">₹{item.price} each</div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateEditItemQty(item.id, -1)}
+                            className="p-1 hover:bg-slate-100 text-slate-600"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="px-2 font-bold text-slate-800">{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateEditItemQty(item.id, 1)}
+                            className="p-1 hover:bg-slate-100 text-slate-600"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <span className="font-bold text-slate-800 w-12 text-right">
+                          ₹{item.price * item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditItem(item.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add New Item Selector */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Add More Dishes from Menu
+                </label>
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-none">
+                  {menuItems.map((menuDish) => (
+                    <button
+                      key={menuDish.id}
+                      type="button"
+                      onClick={() => handleAddItemToEditOrder(menuDish)}
+                      className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{menuDish.name} (₹{menuDish.price})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Special Instructions Note */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Special Instructions / Kitchen Notes</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={editOrderNotes}
+                  onChange={(e) => setEditOrderNotes(e.target.value)}
+                  placeholder="e.g. Less spicy, extra sauce..."
+                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              {/* Recalculated Totals */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1.5 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span className="font-semibold">
+                    ₹{editOrderItems.reduce((acc, curr) => acc + curr.price * curr.quantity, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Taxes (GST 5%)</span>
+                  <span className="font-semibold">
+                    ₹{(editOrderItems.reduce((acc, curr) => acc + curr.price * curr.quantity, 0) * 0.05).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
+                  <span>Updated Grand Total</span>
+                  <span className="text-sky-700">
+                    ₹{(editOrderItems.reduce((acc, curr) => acc + curr.price * curr.quantity, 0) * 1.05).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingActiveOrder(null)}
+                  className="px-4 py-2.5 border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs shadow-md shadow-sky-600/20 transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Save & Update Order</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

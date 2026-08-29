@@ -9,7 +9,8 @@ import {
   syncOrderToFirebase,
   syncTableToFirebase,
   syncMenuItemToFirebase,
-  deleteMenuItemFromFirebase
+  deleteMenuItemFromFirebase,
+  initializeFirebaseData
 } from '../firebase/services';
 
 const OrderContext = createContext();
@@ -83,8 +84,11 @@ export const OrderProvider = ({ children }) => {
 
   // Real-time Firebase subscriptions
   useEffect(() => {
+    // Automatically seed tables & menu items to Firebase if empty
+    initializeFirebaseData(INITIAL_TABLES, MENU_ITEMS);
+
     const unsubOrders = subscribeOrders((fbOrders) => {
-      if (fbOrders && fbOrders.length) setOrders(fbOrders);
+      if (fbOrders) setOrders(fbOrders);
     });
     const unsubTables = subscribeTables((fbTables) => {
       if (fbTables && fbTables.length) setTables(fbTables);
@@ -491,12 +495,56 @@ export const OrderProvider = ({ children }) => {
     broadcastSync(notificationPayload);
   };
 
+  // Update an active order (change items, quantities, or notes)
+  const updateExistingOrder = ({ orderId, items, notes }) => {
+    const targetOrder = orders.find((o) => o.orderId === orderId);
+    if (!targetOrder) return;
+
+    const subtotal = Math.round(items.reduce((acc, curr) => acc + curr.price * curr.quantity, 0) * 100) / 100;
+    const tax = Math.round(subtotal * 0.05 * 100) / 100;
+    const total = subtotal + tax;
+
+    const updatedOrder = {
+      ...targetOrder,
+      items,
+      subtotal,
+      tax,
+      total,
+      notes: notes !== undefined ? notes : targetOrder.notes,
+      status: 'new', // Reset status so Chef gets kitchen alert for updated items
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedOrders = orders.map((o) =>
+      o.orderId === orderId ? updatedOrder : o
+    );
+
+    setOrders(updatedOrders);
+    localStorage.setItem('hotel_orders', JSON.stringify(updatedOrders));
+
+    // Sync to Firebase
+    syncOrderToFirebase(updatedOrder);
+
+    const notificationPayload = {
+      title: "✏️ Active Order Modified",
+      message: `Order #${orderId} for Table ${targetOrder.tableNumber} was updated by Waiter.`,
+      type: "info",
+      targetRoles: ["chef", "owner"]
+    };
+
+    addNotification(notificationPayload);
+    broadcastSync(notificationPayload);
+
+    return updatedOrder;
+  };
+
   // Reset all tables and orders to default clean state
   const resetAllTables = () => {
     setOrders([]);
     setTables(INITIAL_TABLES);
     localStorage.removeItem('hotel_orders');
     localStorage.setItem('hotel_tables', JSON.stringify(INITIAL_TABLES));
+    initializeFirebaseData(INITIAL_TABLES, MENU_ITEMS);
     broadcastSync();
   };
 
@@ -512,6 +560,7 @@ export const OrderProvider = ({ children }) => {
         addNewMenuItem,
         updateMenuItem,
         deleteMenuItem,
+        updateExistingOrder,
         resetAllTables
       }}
     >
